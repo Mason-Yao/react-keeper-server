@@ -29,23 +29,26 @@ app.post("/login", (req, res) => {
             .then(user => {
                 if(!user) {
                     throw new Error("Unauthorized")
+                } else{
+                    return user
                 }
-                return user
+
             })
             .then(existedUser => {
                 bcrypt.compare(password, existedUser.password, (err, result) => {
                     if(err) {
                         console.log(err)
+                    }else if(!result) {
+                        res.status(401).json()
+                    } else {
+                        const token = jwt.sign({id: existedUser._id}, secretKey, {expiresIn: "60s"})
+                        res.json({token: token})
                     }
-                    if(!result) {
-                        throw new Error("Unauthorized")
-                    }
-                    const token = jwt.sign({id: existedUser._id}, secretKey, {expiresIn: "60s"})
-                    res.json({token: token})
+
                 })
             })
-            .catch(() => {
-                res.status(401).send()
+            .catch((err) => {
+                res.status(401).json({message: err.message})
             })
     }
 )
@@ -57,9 +60,9 @@ app.get("/user", authenticateUserLogin, (req, res) => {
         console.log("token verified, the user found in db is: " + req.user)
         res.json(req.user)
     } else {
-        console.log("token verification failed, the value set for req.user is: " + req.user)
-        res.status(401).send()
-        console.log("code 401 has been sent")
+        // console.log("token verification failed, the value set for req.user is: " + req.user)
+        // res.status(401).json()
+        // console.log("code 401 has been sent")
     }
 })
 
@@ -102,7 +105,7 @@ app.post("/register", (req, res) => {
             console.log("token has been sent back to fronted after signing a user up")
         })
         .catch(err => {
-            console.log(err);
+            // console.log(err);
             res.status(400).json({message: err.message})
         })
 })
