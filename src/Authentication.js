@@ -1,10 +1,11 @@
 import mongoose from "mongoose"
 import passport from "passport"
 import bcrypt from "bcrypt";
-import {Strategy as LocalStrategy} from "passport-local"
+import {ExtractJwt, Strategy as JwtStrategy} from "passport-jwt"
+import token from "jsonwebtoken"
 
 mongoose.mongoose.set("strictQuery", true)
-mongoose.connect("mongodb://127.0.0.1:27017/userDB")
+mongoose.connect("mongodb://127.0.0.1:27017/userDB_JWT")
 const userSchema = new mongoose.Schema(
     {
         "username": {
@@ -25,45 +26,32 @@ const userSchema = new mongoose.Schema(
 )
 
 const User = new mongoose.model("User", userSchema)
-passport.use(new LocalStrategy((username, password, done) => {
-        // Match user
-        User.findOne({ username: username })
-            .then(user => {
-                if (!user) {
-                    return done(null, false, { message: 'That email is not registered' });
-                }
+const opts = {}
+opts.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken()
+opts.secretOrKey = "mySecret"
 
-                // Match password
-                bcrypt.compare(password, user.password, (err, isMatch) => {
-                    if (err) throw err;
-                    if (isMatch) {
-                        return done(null, user);
-                    } else {
-                        return done(null, false, { message: 'Password incorrect' });
-                    }
-                });
-            })
-            .catch(err => console.log(err));
+passport.use(new JwtStrategy(opts, (payload, done) => {
+        // Match user
+        User.findById(payload.id, (err, user) => {
+            if (err) {
+                console.log("error in strategy")
+                return done(err, false);
+            }
+            if (user) {
+                console.log("succeed in strategy")
+                return done(null, user);
+            } else {
+                console.log("no result in strategy")
+                return done(null, false);
+            }
+        })
+
     })
 );
 
-passport.serializeUser(function(user, cb) {
-    process.nextTick(function() {
-        return cb(null, {
-            id: user.id,
-            username: user.username,
-            picture: user.picture
-        });
-    });
-});
 
-passport.deserializeUser(function(user, cb) {
-    process.nextTick(function() {
-        return cb(null, user);
-    });
-});
 
-const authenticateUserLogin = passport.authenticate("local")
+const authenticateUserLogin = passport.authenticate("jwt", {session: false})
 
 export {User, authenticateUserLogin}
 

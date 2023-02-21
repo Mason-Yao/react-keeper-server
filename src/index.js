@@ -3,100 +3,66 @@ import cors from "cors"
 import passport from "passport"
 import session from "express-session"
 import bodyParser from "body-parser";
-import cookieParser from "cookie-parser"
+import jwt from "jsonwebtoken"
+
 import {User, authenticateUserLogin} from "./Authentication.js";
 import mongoose from "mongoose"
-import passportLocalMongoose from "passport-local-mongoose"
+
 import bcrypt from "bcrypt"
-import {reject} from "bcrypt/promises.js";
+
 
 const app = express()
+const secretKey = "mySecret"
 
+app.use(cors({origin: ['http://localhost:3000']}))
 app.use(express.json())
-app.use(session({
-    secret: "demopassword",
-    resave: false,
-    saveUninitialized: false
-}))
-app.use(cookieParser())
+
 app.use(bodyParser.json())
 // app.use(bodyParser.urlencoded({extended: true}))
-app.use(passport.session())
+app.use(passport.initialize())
 app.listen(13000)
 
 
-app.use(cors({
-    origin: ['http://localhost:3000'],
-    credentials: true
-}))
-
-// mongoose.mongoose.set("strictQuery", true)
-// mongoose.connect("mongodb://127.0.0.1:27017/userDB")
-// const userSchema = new mongoose.Schema(
-//     {
-//         "userId": {
-//             type: mongoose.Schema.Types.ObjectId
-//         },
-//         "username": {
-//             type: String,
-//             require: true
-//         },
-//         "password": {
-//             type: String,
-//             require: true
-//         },
-//         "googleId": {
-//             type: String
-//         },
-//         "notes": {
-//             type: [Object]
-//         }
-//     }
-// )
-//
-// userSchema.plugin(passportLocalMongoose)
-//
-// const User = new mongoose.model("User", userSchema)
-//
-//
-// passport.serializeUser(function (user, cb) {
-//     process.nextTick(function () {
-//         return cb(null, {
-//             id: user.id,
-//             username: user.username,
-//             picture: user.picture
-//         });
-//     });
-// });
-//
-// passport.deserializeUser(function (user, cb) {
-//     process.nextTick(function () {
-//         return cb(null, user);
-//     });
-// });
-
-// receive the post request sent by axios in front login page, a session will be stored in backend server with value
-// req.user, sessionID will be stored in cookie and sent to frontend. everytime the backend server receives request from
-// frontend, it will check the sessionID and retrieve req.user and other data. req.isAuthenticated() will be true.
-app.post("/login", authenticateUserLogin, (req, res) => {
-        console.log("userSet" + req.user)
-        res.redirect("/user")
+app.post("/login", (req, res) => {
+        const {username, password} = req.body
+        User.findOne({username: username})
+            .then(user => {
+                if(!user) {
+                    throw new Error("Unauthorized")
+                }
+                return user
+            })
+            .then(existedUser => {
+                bcrypt.compare(password, existedUser.password, (err, result) => {
+                    if(err) {
+                        console.log(err)
+                    }
+                    if(!result) {
+                        throw new Error("Unauthorized")
+                    }
+                    const token = jwt.sign({id: existedUser._id}, secretKey, {expiresIn: "60s"})
+                    res.json({token: token})
+                })
+            })
+            .catch(() => {
+                res.status(401).send()
+            })
     }
 )
 
-// user information can be sent back in this function after authentication succeeded, error code if failed.
-// in some cases, like in user component, error code can be further handled to fulfill logic like redirect
-app.get("/user", async (req, res) => {
-        if (req.isAuthenticated()) {
-            console.log("userGot: " + JSON.stringify(req.user))
-            const user = await User.findById(req.user.id, ["userId", "username", "notes"]).exec()
-            console.log("mark2" + user)
-            res.json(user)
-        } else {
-            res.status(401).send()
-        }
+// the verification process will be completed by passport use the specified strategy and set req.user to the user
+// found in database
+app.get("/user", authenticateUserLogin, (req, res) => {
+    if(req.user) {
+        console.log("token verified, the user found in db is: " + req.user)
+        res.json(req.user)
+    } else {
+        console.log("token verification failed, the value set for req.user is: " + req.user)
+        res.status(401).send()
+        console.log("code 401 has been sent")
     }
-)
+})
+
 
 // when the content in request is sent in object format, it can be received by req.body
 app.put("/user", async (req, res) => {
@@ -112,8 +78,8 @@ app.put("/user", async (req, res) => {
 app.post("/register", (req, res) => {
     const {username, password} = req.body
     User.findOne({username: username})
-        .then(result => {
-            if (result) {
+        .then(user => {
+            if (user) {
                 throw new Error("User already exists")
 
             } else {
@@ -131,17 +97,13 @@ app.post("/register", (req, res) => {
         })
         .then(savedUser => {
             console.log("the user " + savedUser.username + " has been saved")
-            req.login(savedUser, () => {
-                console.log("Login with register user " + savedUser.username)
-                authenticateUserLogin(req, res, () => {
-                    res.redirect("/user")
-                })
-                // res.redirect("/user")
-            })
+            const token = jwt.sign({id: savedUser._id}, secretKey, {expiresIn: "60s"})
+            res.json({token: token})
+            console.log("token has been sent back to fronted after signing a user up")
         })
         .catch(err => {
             console.log(err);
-            res.status(400).json({message:err.message})
+            res.status(400).json({message: err.message})
         })
 })
 
