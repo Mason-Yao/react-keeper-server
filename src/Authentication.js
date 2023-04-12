@@ -34,14 +34,11 @@ passport.use(new JwtStrategy(opts, (payload, done) => {
         // Match user
         User.findById(payload.id, (err, user) => {
             if (err) {
-                console.log("error in strategy")
                 return done(err, false);
             }
             if (user) {
-                console.log("succeed in strategy")
                 return done(null, user);
             } else {
-                console.log("no result in strategy")
                 return done(null, false);
             }
         })
